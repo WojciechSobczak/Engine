@@ -28,6 +28,7 @@ private:
 	static D3D12_FEATURE_DATA_MULTISAMPLE_QUALITY_LEVELS multiSamplingQualityLevels;
 
 	static DXGI_FORMAT pixelDefinitionFormat;
+	static DXGI_FORMAT depthStencilFormat;
 
 	static UINT multiSamplingLevel;
 	static UINT multiSamplingQualityLevel;
@@ -50,6 +51,7 @@ private:
 	static ComPtr<ID3D12DescriptorHeap> rtvDescriptorHeap;
 	static ComPtr<ID3D12DescriptorHeap> dsvDescriptorHeap;
 	static ComPtr<ID3D12Resource> swapChainBackBuffers[];
+	static ComPtr<ID3D12Resource> depthStencilBuffer;
 
 	static INT currentBackBuffer;
 
@@ -79,5 +81,10 @@ private:
 	static void createDSVDescriptorHeap();
 
 	static void createSwapChainBuffersIntoRTVHeap();
+
+	static void createDepthStencilView();
+
+	static void createViewPort();
+	static void createScissorsRectangle();
 
 };

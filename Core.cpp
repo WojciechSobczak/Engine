@@ -13,7 +13,10 @@ UINT Core::dsvDescriptorSize = 0;
 UINT Core::cbvDescriptorSize = 0;
 
 D3D12_FEATURE_DATA_MULTISAMPLE_QUALITY_LEVELS Core::multiSamplingQualityLevels = {};
+
 DXGI_FORMAT Core::pixelDefinitionFormat = DXGI_FORMAT::DXGI_FORMAT_B8G8R8A8_UNORM;
+DXGI_FORMAT Core::depthStencilFormat = DXGI_FORMAT::DXGI_FORMAT_D24_UNORM_S8_UINT;
+
 
 UINT Core::multiSamplingLevel = 4; //4xMSAA
 UINT Core::multiSamplingQualityLevel = 0;
@@ -35,6 +38,7 @@ ComPtr<ID3D12DescriptorHeap> Core::rtvDescriptorHeap;
 ComPtr<ID3D12DescriptorHeap> Core::dsvDescriptorHeap;
 
 ComPtr<ID3D12Resource> Core::swapChainBackBuffers[Core::BufferingType::TRIPLE]; //Tymczasowo, zczaiæ jak to zainicjowaæ w locie z konfiguracji
+ComPtr<ID3D12Resource> Core::depthStencilBuffer;
 
 INT Core::currentBackBuffer = 0;
 
@@ -96,6 +100,75 @@ void Core::createSwapChainBuffersIntoRTVHeap() {
 		//Zapamiêtuje offset, to jest sterta po prostu zwyk³a
 		rtvHeapHandle.Offset(1, rtvDescriptorSize);
 	}
+}
+
+void Core::createDepthStencilView() {
+	D3D12_RESOURCE_DESC depthStencilViewDesc;
+	depthStencilViewDesc.Dimension = D3D12_RESOURCE_DIMENSION::D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	depthStencilViewDesc.Alignment = 0; //WTF??
+	depthStencilViewDesc.Width = Core::displayWidth;
+	depthStencilViewDesc.Height = Core::displayHeight;
+	depthStencilViewDesc.DepthOrArraySize = 1; //WTF??
+	depthStencilViewDesc.MipLevels = 1; //WTF??
+	depthStencilViewDesc.Format = Core::depthStencilFormat;
+	depthStencilViewDesc.SampleDesc.Count = 1;
+	depthStencilViewDesc.Layout = D3D12_TEXTURE_LAYOUT::D3D12_TEXTURE_LAYOUT_UNKNOWN;
+	depthStencilViewDesc.Flags = D3D12_RESOURCE_FLAGS::D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+
+	D3D12_CLEAR_VALUE clearValueDefinition; //Zoptymalizowana
+	clearValueDefinition.Format = Core::depthStencilFormat;
+	clearValueDefinition.DepthStencil.Depth = 1.0f;
+	clearValueDefinition.DepthStencil.Stencil = 0;
+	
+	ErrorUtils::messageAndExitIfFailed(device->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE::D3D12_HEAP_TYPE_DEFAULT),
+		D3D12_HEAP_FLAGS::D3D12_HEAP_FLAG_NONE,
+		&depthStencilViewDesc,
+		D3D12_RESOURCE_STATES::D3D12_RESOURCE_STATE_COMMON,
+		&clearValueDefinition,
+		IID_PPV_ARGS(Core::depthStencilBuffer.GetAddressOf())
+	),
+		L"B³¹d utworzenia depthStencilBuffera!",
+		CREATE_DEPTH_STENCIL_BUFFER_ERROR
+	);
+
+	Core::device->CreateDepthStencilView(
+		Core::depthStencilBuffer.Get(),
+		NULL, //Je¿eli resource ma typ (nie typeless) tutaj mo¿e byæ null, w przeciwnym razie trzeba wype³niæ strukturê. U nas ten typ to Core::pixelDefinitionFormat
+		Core::getDSVHeapStartDescriptorHandle()
+	);
+
+	//Zmiana stanu zasobu (resource) z pocz¹tkowego, na bycie depthBufferem
+	Core::commandList->ResourceBarrier(
+		1,
+		&CD3DX12_RESOURCE_BARRIER::Transition(
+			Core::depthStencilBuffer.Get(),
+			D3D12_RESOURCE_STATES::D3D12_RESOURCE_STATE_COMMON,
+			D3D12_RESOURCE_STATES::D3D12_RESOURCE_STATE_DEPTH_WRITE
+		)
+	);
+}
+
+void Core::createViewPort() {
+	D3D12_VIEWPORT viewport;
+	viewport.TopLeftX = 0;
+	viewport.TopLeftY = 0;
+	viewport.Width = (float) Core::displayWidth;
+	viewport.Height = (float) Core::displayHeight;
+	viewport.MinDepth = 0; //To jest ten tyb buffora co siê ustawia. w naszym przypadku [0, 1], ale mo¿e byæ inny
+	viewport.MaxDepth = 1;
+	//The viewport needs to be reset whenever the command list is reset.
+	Core::commandList->RSSetViewports(1, &viewport);
+}
+
+void Core::createScissorsRectangle() {
+	RECT scissorsRectangle;
+	scissorsRectangle.left = 0;
+	scissorsRectangle.right = Core::displayWidth;
+	scissorsRectangle.top = 0;
+	scissorsRectangle.bottom = Core::displayHeight;
+
+	Core::commandList->RSSetScissorRects(1, &scissorsRectangle);
 }
 
 D3D12_CPU_DESCRIPTOR_HANDLE Core::getRTVHeapStartDescriptorHandle() {
@@ -307,4 +380,7 @@ void Core::init() {
 	createRTVDescriptorHeap();
 	createDSVDescriptorHeap();
 	createSwapChainBuffersIntoRTVHeap();
+	createDepthStencilView();
+	createViewPort();
+	createScissorsRectangle();
 }
