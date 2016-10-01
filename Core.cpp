@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "Timer.h"
 #include "Core.h"
 
 ComPtr<ID3D12Device> Core::device;
@@ -383,4 +384,5 @@ void Core::init() {
 	createDepthStencilView();
 	createViewPort();
 	createScissorsRectangle();
+	Timer::init();
 }

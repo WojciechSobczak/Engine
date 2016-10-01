@@ -3,14 +3,14 @@
 
 #include "stdafx.h"
 
+void nic() {
+	Sleep(1);
+}
 
 int main() {
-
-	//Core::init();
-	std::wstring s = L"Nie";
-	HINSTANCE hisnstance = GetModuleHandle(0);
-	HWND hwnd = initializeMainWindow(hisnstance, s);
 	Core::init();
+	printf("Coœ");
+	mainLoop(nic);
     return 0;
 }
 
