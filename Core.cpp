@@ -21,6 +21,7 @@ DXGI_FORMAT Core::depthStencilFormat = DXGI_FORMAT::DXGI_FORMAT_D24_UNORM_S8_UIN
 
 UINT Core::multiSamplingLevel = 4; //4xMSAA
 UINT Core::multiSamplingQualityLevel = 0;
+bool Core::multiSamplingEnabled = true;
 
 ComPtr<ID3D12GraphicsCommandList> Core::commandList;
 ComPtr<ID3D12CommandQueue> Core::commandQueue;
@@ -33,15 +34,23 @@ UINT Core::refreshRate = 60; //60Hz
 Core::BufferingType Core::buffering = Core::BufferingType::TRIPLE;
 
 //Przyk³ad z ksi¹¿ki siê wyk³ada wiêc wzi¹³em z przyk³adów MSDN
-ComPtr<IDXGISwapChain1> Core::swapChain;
 
+#if SWAP_CHAIN_VARIANT 1
+ComPtr<IDXGISwapChain> Core::swapChain;
+#else
+ComPtr<IDXGISwapChain1> Core::swapChain;
+#endif
 ComPtr<ID3D12DescriptorHeap> Core::rtvDescriptorHeap;
 ComPtr<ID3D12DescriptorHeap> Core::dsvDescriptorHeap;
 
 ComPtr<ID3D12Resource> Core::swapChainBackBuffers[Core::BufferingType::TRIPLE]; //Tymczasowo, zczaiæ jak to zainicjowaæ w locie z konfiguracji
 ComPtr<ID3D12Resource> Core::depthStencilBuffer;
 
+RECT Core::scissorsRectangle;
+D3D12_VIEWPORT Core::viewport;
+
 INT Core::currentBackBuffer = 0;
+INT Core::currentFence = 0;
 
 HWND Core::mainWindow;
 Core::RenderFunction Core::mainRenderFunction;
@@ -114,6 +123,7 @@ void Core::createDepthStencilView() {
 	depthStencilViewDesc.MipLevels = 1; //WTF??
 	depthStencilViewDesc.Format = Core::depthStencilFormat;
 	depthStencilViewDesc.SampleDesc.Count = 1;
+	depthStencilViewDesc.SampleDesc.Quality = 0;
 	depthStencilViewDesc.Layout = D3D12_TEXTURE_LAYOUT::D3D12_TEXTURE_LAYOUT_UNKNOWN;
 	depthStencilViewDesc.Flags = D3D12_RESOURCE_FLAGS::D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
 
@@ -141,36 +151,73 @@ void Core::createDepthStencilView() {
 	);
 
 	//Zmiana stanu zasobu (resource) z pocz¹tkowego, na bycie depthBufferem
-	Core::commandList->ResourceBarrier(
-		1,
-		&CD3DX12_RESOURCE_BARRIER::Transition(
-			Core::depthStencilBuffer.Get(),
-			D3D12_RESOURCE_STATES::D3D12_RESOURCE_STATE_COMMON,
-			D3D12_RESOURCE_STATES::D3D12_RESOURCE_STATE_DEPTH_WRITE
-		)
-	);
+	Core::invokeSimpleDXCommand([]() {
+		Core::commandList->ResourceBarrier(
+			1,
+			&CD3DX12_RESOURCE_BARRIER::Transition(
+				Core::depthStencilBuffer.Get(),
+				D3D12_RESOURCE_STATES::D3D12_RESOURCE_STATE_COMMON,
+				D3D12_RESOURCE_STATES::D3D12_RESOURCE_STATE_DEPTH_WRITE
+			)
+		);
+	});
 }
 
 void Core::createViewPort() {
-	D3D12_VIEWPORT viewport;
-	viewport.TopLeftX = 0;
-	viewport.TopLeftY = 0;
-	viewport.Width = (float) Core::displayWidth;
-	viewport.Height = (float) Core::displayHeight;
-	viewport.MinDepth = 0; //To jest ten tyb buffora co siê ustawia. w naszym przypadku [0, 1], ale mo¿e byæ inny
-	viewport.MaxDepth = 1;
+	Core::viewport.TopLeftX = 0;
+	Core::viewport.TopLeftY = 0;
+	Core::viewport.Width = (float) Core::displayWidth;
+	Core::viewport.Height = (float) Core::displayHeight;
+	Core::viewport.MinDepth = 0; //To jest ten tyb buffora co siê ustawia. w naszym przypadku [0, 1], ale mo¿e byæ inny
+	Core::viewport.MaxDepth = 1;
 	//The viewport needs to be reset whenever the command list is reset.
-	Core::commandList->RSSetViewports(1, &viewport);
+	Core::invokeSimpleDXCommand([]() {
+		Core::commandList->RSSetViewports(1, &Core::viewport);
+	});
 }
 
 void Core::createScissorsRectangle() {
-	RECT scissorsRectangle;
-	scissorsRectangle.left = 0;
-	scissorsRectangle.right = Core::displayWidth;
-	scissorsRectangle.top = 0;
-	scissorsRectangle.bottom = Core::displayHeight;
+	Core::scissorsRectangle.left = 0;
+	Core::scissorsRectangle.right = Core::displayWidth;
+	Core::scissorsRectangle.top = 0;
+	Core::scissorsRectangle.bottom = Core::displayHeight;
+	Core::invokeSimpleDXCommand([]() {
+		Core::commandList->RSSetScissorRects(1, &Core::scissorsRectangle);
+	});
+}
 
-	Core::commandList->RSSetScissorRects(1, &scissorsRectangle);
+void Core::flushCommandQueue() {
+	// Advance the fence value to mark commands up to this fence point.
+	Core::currentFence++;
+
+	// Add an instruction to the command queue to set a new fence point.  Because we 
+	// are on the GPU timeline, the new fence point won't be set until the GPU finishes
+	// processing all the commands prior to this Signal().
+	ErrorUtils::throwIfFailed(Core::commandQueue->Signal(Core::fence.Get(), Core::currentFence));
+
+	// Wait until the GPU has completed commands up to this fence point.
+	if (Core::fence->GetCompletedValue() < Core::currentFence) {
+		HANDLE eventHandle = CreateEventEx(nullptr, false, false, EVENT_ALL_ACCESS);
+
+		// Fire event when GPU hits current fence.  
+		ErrorUtils::throwIfFailed(Core::fence->SetEventOnCompletion(Core::currentFence, eventHandle));
+
+		// Wait until the GPU hits current fence event is fired.
+		WaitForSingleObject(eventHandle, INFINITE);
+		CloseHandle(eventHandle);
+	}
+}
+
+D3D12_CPU_DESCRIPTOR_HANDLE Core::getCurrentBackBufferView() {
+	return CD3DX12_CPU_DESCRIPTOR_HANDLE(
+		Core::rtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
+		Core::currentBackBuffer,
+		Core::rtvDescriptorSize
+	);
+}
+
+ComPtr<ID3D12Resource> Core::getCurrentBackBuffer() {
+	return Core::swapChainBackBuffers[Core::currentBackBuffer];
 }
 
 D3D12_CPU_DESCRIPTOR_HANDLE Core::getRTVHeapStartDescriptorHandle() {
@@ -215,53 +262,51 @@ void Core::createWindow() {
 void Core::createSwapChain() {
 	swapChain.Reset(); //Wypierdzielenie wskaŸnika który siê utworzy³
 	
+#if SWAP_CHAIN_VARIANT 1
 	//Pojêcia nie mam czemu przyk³ad z ksi¹¿ki nie dzia³a
-	//DXGI_MODE_DESC bufferDesc;
-	//bufferDesc.Width = Core::displayWidth;
-	//bufferDesc.Height = Core::displayHeight;
-	//bufferDesc.RefreshRate.Numerator = Core::refreshRate;// 60 /
-	//bufferDesc.RefreshRate.Denominator = 1;				 // 1
-	//bufferDesc.Scaling = DXGI_MODE_SCALING::DXGI_MODE_SCALING_UNSPECIFIED;
-	//bufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER::DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
-	//bufferDesc.Format = Core::pixelDefinitionFormat;
+	DXGI_SWAP_CHAIN_DESC swapChainDesc;
+	swapChainDesc.BufferDesc.Width = Core::displayWidth;
+	swapChainDesc.BufferDesc.Height = Core::displayHeight;
+	swapChainDesc.BufferDesc.RefreshRate.Numerator = 60;
+	swapChainDesc.BufferDesc.RefreshRate.Denominator = 1;
+	swapChainDesc.BufferDesc.Format = Core::pixelDefinitionFormat;
+	swapChainDesc.BufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
+	swapChainDesc.BufferDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
+	swapChainDesc.SampleDesc.Count = 1;// Core::multiSamplingLevel ? 4 : 1;
+	swapChainDesc.SampleDesc.Quality = Core::multiSamplingEnabled ? (Core::multiSamplingLevel - 1) : 0;
+	swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+	swapChainDesc.BufferCount = (INT) Core::buffering;
+	swapChainDesc.OutputWindow = Core::mainWindow;
+	swapChainDesc.Windowed = true;
+	swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+	swapChainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
 
-	//DXGI_SAMPLE_DESC sampleDesc;
-	//sampleDesc.Count = multiSamplingLevel == 0 ? 1 : multiSamplingLevel;
-	//sampleDesc.Quality = multiSamplingQualityLevel == 0 ? 0 : (multiSamplingQualityLevel - 1); //Nie wiem czemu odejmowanie, ale spoko, siê sprawdzi jeszcze.
-
-	//DXGI_SWAP_CHAIN_DESC swapChainDesc;
-	//swapChainDesc.BufferDesc = bufferDesc;
-	//swapChainDesc.SampleDesc = sampleDesc;
-	//swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-	//swapChainDesc.BufferCount = (UINT) Core::DOUBLE;
-	//swapChainDesc.Windowed = true;
-	//swapChainDesc.OutputWindow = Core::mainWindow;
-	//swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT::DXGI_SWAP_EFFECT_FLIP_DISCARD;
-	//swapChainDesc.Flags = DXGI_SWAP_CHAIN_FLAG::DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
-
-
-
+	// Note: Swap chain uses queue to perform flush.
+	ThrowIfFailed(Core::factory->CreateSwapChain(
+		Core::commandQueue.Get(),
+		&swapChainDesc,
+		Core::swapChain.GetAddressOf()
+	));
+#else
 	DXGI_SWAP_CHAIN_DESC1 swapChainDesc = {};
-	swapChainDesc.BufferCount = Core::buffering;
+	swapChainDesc.BufferCount = (INT) Core::buffering;
 	swapChainDesc.Width = Core::displayWidth;
 	swapChainDesc.Height = Core::displayHeight;
 	swapChainDesc.Format = Core::pixelDefinitionFormat;
 	swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
 	swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
 	swapChainDesc.SampleDesc.Count = 1;
+	swapChainDesc.SampleDesc.Quality = 0;
 	
-	ErrorUtils::messageAndExitIfFailed(
-		factory->CreateSwapChainForHwnd(
+	ThrowIfFailed(Core::factory->CreateSwapChainForHwnd(
 			Core::commandQueue.Get(),		// Swap chain needs the queue so that it can force a flush on it.
 			Core::mainWindow,
 			&swapChainDesc,
 			nullptr,
 			nullptr,
 			&swapChain
-		),
-		L"B³¹d tworzenia swapChain'a!",
-		SWAP_CHAIN_CREATION_ERROR
-	);
+		));
+#endif
 }
 
 void Core::createCommandQueue() {
@@ -363,11 +408,7 @@ void Core::init(RenderFunction renderFunction) {
 	Core::mainRenderFunction = renderFunction;
 #ifdef _DEBUG
 	ComPtr<ID3D12Debug> debugController;
-	ErrorUtils::messageAndExitIfFailed(
-		D3D12GetDebugInterface(IID_PPV_ARGS(&debugController)),
-		L"B³¹d przejœcia w tryb debugowania! Core::init()",
-		DEBUG_STATE_ERROR
-	);
+	ThrowIfFailed(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController)));
 	debugController->EnableDebugLayer();
 #endif
 	createFactory();
@@ -413,6 +454,14 @@ void Core::calculateFrameStats() {
 		frameCounter = 0;
 		timeElapsed += 1.0f;
 	}
+}
+
+void Core::invokeSimpleDXCommand(std::function<void()> func) {
+	ThrowIfFailed(Core::commandAllocator->Reset());
+	ThrowIfFailed(Core::commandList->Reset(Core::commandAllocator.Get(), NULL));
+	func();
+	ThrowIfFailed(Core::commandList->Close());
+	Core::flushCommandQueue();
 }
 
 HWND Core::initializeMainWindow(HINSTANCE hInstance, std::wstring &windowName, bool showcmd) {
@@ -487,7 +536,7 @@ LRESULT CALLBACK Core::messagesHandler(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
 	return 0;
 }
 
-void Core::windowMainLoopHandler() {
+void Core::start() {
 	MSG msg;
 	ZeroMemory(&msg, sizeof(MSG));
 

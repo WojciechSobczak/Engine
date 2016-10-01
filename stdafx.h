@@ -18,12 +18,13 @@
 #include <DXGI1_4.h>
 #include <D3D12.h>
 #include <DirectXMath.h>
+#include <DirectXColors.h>
 #include "d3dx12.h"
 #include "ErrorUtils.h"
 #include "DebugUtils.h"
 
 
-
+#include "Renderer.h"
 #include "Core.h"
 
 

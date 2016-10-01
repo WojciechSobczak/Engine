@@ -6,11 +6,18 @@
 
 
 int main() {
-	Core::init([]() {
-		Sleep(1);
-	});
-	Core::start();
-	printf("Coœ");
+	try {
+		Core::init([]() {
+			Renderer::drawSomething();
+		});
+		Core::start();
+		printf("Coœ");
+	}
+	catch (DxException& e) {
+		MessageBox(nullptr, e.toString().c_str(), L"HR Failed", MB_OK);
+		return 0;
+	}
+	
     return 0;
 }
 

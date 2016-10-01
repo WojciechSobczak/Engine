@@ -1,5 +1,6 @@
 #pragma once
 #include "stdafx.h"
+#include <comdef.h>
 
 #define DEBUG_STATE_ERROR -1
 #define HARDWARE_DEVICE_CREATION_ERROR -2
@@ -26,4 +27,34 @@ namespace ErrorUtils {
 	void messageAndExitIfFailed(HRESULT result, std::wstring message, unsigned int codeOfError);
 	void messageAndExitIfTrue(bool result, std::wstring message, unsigned int codeOfError);
 	void messageAndExitIfFalse(bool result, std::wstring message, unsigned int codeOfError);
+	void throwIfFailed(HRESULT result);
+	inline std::wstring AnsiToWString(const std::string& str) {
+		WCHAR buffer[512];
+		MultiByteToWideChar(CP_ACP, 0, str.c_str(), -1, buffer, 512);
+		return std::wstring(buffer);
+	}
 }
+
+class DxException {
+public:
+	DxException() = default;
+	DxException(HRESULT hr, const std::wstring& functionName, const std::wstring& filename, int lineNumber);
+
+	std::wstring toString()const;
+
+	HRESULT ErrorCode = S_OK;
+	std::wstring FunctionName;
+	std::wstring Filename;
+	int LineNumber = -1;
+};
+
+#ifndef ThrowIfFailed
+#define ThrowIfFailed(x) { \
+	HRESULT hr__ = (x); \
+	std::wstring wfn = ErrorUtils::AnsiToWString(__FILE__); \
+	if(FAILED(hr__)) { \
+		throw DxException(hr__, L#x, wfn, __LINE__); \
+	} \
+}
+#endif
+

@@ -45,6 +45,9 @@
     <ClInclude Include="Timer.h">
       <Filter>Header Files\Core</Filter>
     </ClInclude>
+    <ClInclude Include="Renderer.h">
+      <Filter>Header Files\Core</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -63,6 +66,9 @@
       <Filter>Header Files\Utils</Filter>
     </ClCompile>
     <ClCompile Include="Timer.cpp">
+      <Filter>Header Files\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="Renderer.cpp">
       <Filter>Header Files\Core</Filter>
     </ClCompile>
   </ItemGroup>
