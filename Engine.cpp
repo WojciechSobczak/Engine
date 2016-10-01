@@ -2,15 +2,15 @@
 //
 
 #include "stdafx.h"
+#include <functional>
 
-void nic() {
-	Sleep(1);
-}
 
 int main() {
-	Core::init();
+	Core::init([]() {
+		Sleep(1);
+	});
+	Core::start();
 	printf("Coœ");
-	mainLoop(nic);
     return 0;
 }
 

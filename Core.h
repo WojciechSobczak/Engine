@@ -1,19 +1,30 @@
 #pragma once
 #include "stdafx.h"
+#include <functional>
 
 using namespace Microsoft::WRL; //For ComPtr
 
+
 class Core {
 public:
-	static void init();
+	typedef std::function<void()> RenderFunction;
+	static void init(RenderFunction renderFunction);
+	static void windowMainLoopHandler();
 	static UINT getDisplayHeight() {
 		return Core::displayHeight;
 	};
 	static UINT getDisplayWidth() {
 		return Core::displayWidth;
 	};
-
+	
 private:
+
+	static HWND initializeMainWindow(HINSTANCE hInstance, std::wstring &windowName, bool showcmd = true);
+	//LRESULT = long
+	//CALLBACK = __stdcall
+	static LRESULT CALLBACK messagesHandler(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+	static RenderFunction mainRenderFunction;
+
 	static ComPtr<ID3D12Device> device;
 	static ComPtr<IDXGIFactory4> factory;
 	static ComPtr<ID3D12Fence> fence;
@@ -63,6 +74,7 @@ private:
 	static D3D12_CPU_DESCRIPTOR_HANDLE getDSVHeapStartDescriptorHandle();
 
 	static void createWindow();
+	static void calculateFrameStats();
 
 
 	static void createDevice();

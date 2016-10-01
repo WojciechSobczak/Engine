@@ -19,9 +19,6 @@
     <Filter Include="Header Files\Utils">
       <UniqueIdentifier>{f9b52bff-a211-4cc4-b38b-b09d226bf665}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Header Files\Window">
-      <UniqueIdentifier>{0ff24180-5d3e-4a4e-815e-d78eb7df2d6d}</UniqueIdentifier>
-    </Filter>
   </ItemGroup>
   <ItemGroup>
     <Text Include="ReadMe.txt" />
@@ -45,9 +42,6 @@
     <ClInclude Include="DebugUtils.h">
       <Filter>Header Files\Utils</Filter>
     </ClInclude>
-    <ClInclude Include="window.h">
-      <Filter>Header Files\Window</Filter>
-    </ClInclude>
     <ClInclude Include="Timer.h">
       <Filter>Header Files\Core</Filter>
     </ClInclude>
@@ -67,9 +61,6 @@
     </ClCompile>
     <ClCompile Include="DebugUtils.cpp">
       <Filter>Header Files\Utils</Filter>
-    </ClCompile>
-    <ClCompile Include="window.cpp">
-      <Filter>Header Files\Window</Filter>
     </ClCompile>
     <ClCompile Include="Timer.cpp">
       <Filter>Header Files\Core</Filter>

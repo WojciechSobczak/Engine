@@ -7,27 +7,26 @@
 #define DEBUG
 
 #include "targetver.h"
-
+#include <stdio.h>
+#include <tchar.h>
 #include <windows.h>
 #include <wrl.h>
+#include <string>
+#include <iostream>
+#include <vector>
+
 #include <DXGI1_4.h>
 #include <D3D12.h>
 #include <DirectXMath.h>
 #include "d3dx12.h"
-#include <string>
-#include <iostream>
 #include "ErrorUtils.h"
 #include "DebugUtils.h"
-#include "window.h"
 
-#include <vector>
 
 
 #include "Core.h"
 
 
-#include <stdio.h>
-#include <tchar.h>
 
 
 
