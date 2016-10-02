@@ -99,14 +99,9 @@ void Core::createDevice() {
 }
 
 void Core::createSwapChainBuffersIntoRTVHeap() {
+	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHeapHandle(rtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
 	for (UINT i = 0; i < Core::buffering; i++) {
-		CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHeapHandle(rtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
-		ErrorUtils::messageAndExitIfFailed(
-			swapChain->GetBuffer(i, IID_PPV_ARGS(&swapChainBackBuffers[i])),
-			L"B³¹d pobierania backBuffera!",
-			GET_SWAPCHAIN_BACK_BUFFER_ERROR
-		);
-
+		ThrowIfFailed(swapChain->GetBuffer(i, IID_PPV_ARGS(&swapChainBackBuffers[i])));
 		device->CreateRenderTargetView(swapChainBackBuffers[i].Get(), NULL, rtvHeapHandle);
 		//Zapamiêtuje offset, to jest sterta po prostu zwyk³a
 		rtvHeapHandle.Offset(1, rtvDescriptorSize);
@@ -136,7 +131,7 @@ void Core::createDepthStencilView() {
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE::D3D12_HEAP_TYPE_DEFAULT),
 		D3D12_HEAP_FLAGS::D3D12_HEAP_FLAG_NONE,
 		&depthStencilViewDesc,
-		D3D12_RESOURCE_STATES::D3D12_RESOURCE_STATE_COMMON,
+		D3D12_RESOURCE_STATES::D3D12_RESOURCE_STATE_DEPTH_WRITE,
 		&clearValueDefinition,
 		IID_PPV_ARGS(Core::depthStencilBuffer.GetAddressOf())
 	),
@@ -272,7 +267,7 @@ void Core::createSwapChain() {
 	swapChainDesc.BufferDesc.Format = Core::pixelDefinitionFormat;
 	swapChainDesc.BufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
 	swapChainDesc.BufferDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
-	swapChainDesc.SampleDesc.Count = 1;// Core::multiSamplingLevel ? 4 : 1;
+	swapChainDesc.SampleDesc.Count = Core::multiSamplingLevel ? 4 : 1;
 	swapChainDesc.SampleDesc.Quality = Core::multiSamplingEnabled ? (Core::multiSamplingLevel - 1) : 0;
 	swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
 	swapChainDesc.BufferCount = (INT) Core::buffering;
@@ -314,33 +309,21 @@ void Core::createCommandQueue() {
 	commandQueueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
 	commandQueueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
 
-	ErrorUtils::messageAndExitIfFailed(
-		device->CreateCommandQueue(&commandQueueDesc, IID_PPV_ARGS(&commandQueue)),
-		L"B³¹d tworzenia kolejki komend!",
-		COMMAND_QUEUE_CREATION_ERROR
-	);
+	ThrowIfFailed(device->CreateCommandQueue(&commandQueueDesc, IID_PPV_ARGS(&commandQueue)));
 }
 
 void Core::createCommandAllocator() {
-	ErrorUtils::messageAndExitIfFailed(
-		device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&commandAllocator)),
-		L"B³¹d tworzenia alokatora komend!",
-		COMMAND_ALLOCATOR_CREATION_ERROR
-	);
+	ThrowIfFailed(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&commandAllocator)));
 }
 
 void Core::createCommandList() {
-	ErrorUtils::messageAndExitIfFailed(
-		device->CreateCommandList(
+	ThrowIfFailed(device->CreateCommandList(
 			NULL,
 			D3D12_COMMAND_LIST_TYPE_DIRECT,
 			commandAllocator.Get(),
 			NULL, //Poniewa¿ na razie nie bêdziemy rysowaæ na ekranie
 			IID_PPV_ARGS(&commandList)
-		),
-		L"B³¹d tworzenia alokatora komend!",
-		COMMAND_ALLOCATOR_CREATION_ERROR
-	);
+	));
 
 	//Zamykamy, ¿eby zamkniêcie by³o stanem pocz¹tkowym
 	//Dzieje siê tak dlatego, ¿e na pocz¹tku dodawania do list, bêdziemy wywo³ywaæ na niej Reset()
@@ -355,15 +338,11 @@ void Core::checkMultiSamplingSupport() {
 	multiSamplingQualityLevels.SampleCount = multiSamplingLevel; 
 	multiSamplingQualityLevels.NumQualityLevels = 0; //Nie wiem czemu zero, sprawdziæ co to tak na prawdê znaczy
 
-	ErrorUtils::messageAndExitIfFailed(
-		device->CheckFeatureSupport(
-			D3D12_FEATURE_MULTISAMPLE_QUALITY_LEVELS,
-			&multiSamplingQualityLevels,
-			sizeof(multiSamplingQualityLevels)
-		),
-		L"Twoja karta nie obs³uguje wymaganego multisamplingu! " + std::to_wstring(multiSamplingLevel) + L" :: Core::checkMultiSamplingSupport()",
-		MULTISAMPLING_FEATURE_SUPPORT_ERROR
-	);
+	ThrowIfFailed(device->CheckFeatureSupport(
+		D3D12_FEATURE_MULTISAMPLE_QUALITY_LEVELS,
+		&multiSamplingQualityLevels,
+		sizeof(multiSamplingQualityLevels)
+	));
 
 	multiSamplingQualityLevel = multiSamplingQualityLevels.NumQualityLevels; //bêdzie 17, ale z docsów wynika ¿e mo¿na zmniejszyæ, ¿eby zwiêkszyæ wydajnoœæ
 
@@ -383,25 +362,15 @@ void Core::defineDescriptorSizes() {
 }
 
 void Core::createFence() {
-	HRESULT result = Core::device->CreateFence(
+	ThrowIfFailed(Core::device->CreateFence(
 		0,
 		D3D12_FENCE_FLAG_NONE,
-		IID_PPV_ARGS(&Core::fence)	
-	);
-
-	ErrorUtils::messageAndExitIfFailed(
-		result,
-		L"B³¹d przy tworzeniu blokady urz¹dzenia (Fence)! Core::createFence()",
-		DEVICE_FENCE_CREATION_ERROR
-	);
+		IID_PPV_ARGS(&Core::fence)
+	));
 }
 
 void Core::createFactory() {
-	ErrorUtils::messageAndExitIfFailed(
-		CreateDXGIFactory1(IID_PPV_ARGS(&Core::factory)),
-		L"B³¹d przy tworzeniu fabryki! Core::createFactory()",
-		FACTORY_CREATION_ERROR
-	);
+	ThrowIfFailed(CreateDXGIFactory1(IID_PPV_ARGS(&Core::factory)));
 }
 
 void Core::init(RenderFunction renderFunction) {
